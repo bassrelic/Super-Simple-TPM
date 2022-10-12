@@ -25,9 +25,12 @@
 #include <AES.h>
 #include <string.h>
 
-#define RX_PIN  10
-#define TX_PIN  11
+#define RX_PIN  8
+#define TX_PIN  9
 #define DATARATE  57600
+
+SoftwareSerial mySerial(RX_PIN, TX_PIN);
+String simRead;
 
 /* https://www.arduino.cc/reference/en/libraries/crypto/ */
 /* statemachine */
@@ -107,7 +110,24 @@ void decryptAES256(BlockCipher *cipher, const struct AES256Vector *vector)
 
 void setup()
 {
-    Serial.begin(9600);
+    Serial.begin(DATARATE);
+
+    // Define pin modes for TX and RX
+    pinMode(RX_PIN, INPUT);
+    pinMode(TX_PIN, OUTPUT);
+    
+    // Set the baud rate for the SoftwareSerial object
+    mySerial.begin(DATARATE);
+
+    mySerial.write("Test");
+    if(mySerial.available() >0)
+    {
+      simRead = mySerial.readString();
+    }
+    mySerial.println();
+    mySerial.println();
+    mySerial.print(simRead);
+    Serial.println(simRead);
 
     Serial.println();
 
