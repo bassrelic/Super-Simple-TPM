@@ -1,5 +1,4 @@
 //TPM set_key 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F
-// Todo : add command to get status of TPM (Basically giving status OK back, does have general structure f set_key command to tip people of)
 
 #include <StaticSerialCommands.h>
 
@@ -9,6 +8,7 @@ void cmd_calc_add(SerialCommands& sender, Args& args);
 void cmd_calc_mul(SerialCommands& sender, Args& args);
 void cmd_tpm(SerialCommands& sender, Args& args);
 void cmd_tpm_set(SerialCommands& sender, Args& args);
+void cmd_tpm_status(SerialCommands& sender, Args& args);
 
 /*
 COMMAND macro is used to create Command object.
@@ -26,6 +26,7 @@ Command subCommands[] {
 
 Command tpmSubCommands[]{
         COMMAND(cmd_tpm_set, "set_key", ArgType::String, nullptr, ""),
+        COMMAND(cmd_tpm_status, "get_status"),
 };
 
 Command commands[] {
@@ -127,6 +128,10 @@ void cmd_tpm_set(SerialCommands& sender, Args& args){
     else{
       Serial.println("Invalid Keylength");
     }
+}
+
+void cmd_tpm_status(SerialCommands& sender, Args& args){
+    Serial.println("TPM Status Okay!");
 }
 
 void cmd_calc(SerialCommands& sender, Args& args) {
