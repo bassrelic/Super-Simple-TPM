@@ -20,22 +20,61 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <SoftwareSerial.h>
 #include <Crypto.h>
 #include <AES.h>
-#include <string.h>
+#include <StaticSerialCommands.h>
 
-#define RX_PIN  8
-#define TX_PIN  9
-#define DATARATE  57600
+#define DATARATE  9600
 
-SoftwareSerial mySerial(RX_PIN, TX_PIN);
-String simRead;
+
+void cmd_help(SerialCommands& sender, Args& args);
+void cmd_tpm(SerialCommands& sender, Args& args);
+void cmd_tpm_set(SerialCommands& sender, Args& args);
+void cmd_tpm_status(SerialCommands& sender, Args& args);
 
 /* https://www.arduino.cc/reference/en/libraries/crypto/ */
 /* statemachine */
 /* aes256 encryption for challenge response */
 /* UART interface for setting of key */
+
+// TPM set_key 0xAB,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F
+/*                                                        */
+/*    ---------------     ---------------                 */
+/*    |             |     |             |                 */
+/*    |             |-----|             |                 */
+/*    |     BBB     | SPI |     TPM     |---------------- */
+/*    |   AES Key   |     |   AES Key   |    Serial       */
+/*    |    Linux    |     |  Changable  | Debug interface */
+/*    |             |     |             |      USB        */
+/*    ---------------     ---------------                 */
+/*                                                        */  
+/*
+COMMAND macro is used to create Command object.
+It takes the following arguments:
+    COMMAND(function, command)
+    COMMAND(function, command, subcommands)
+    COMMAND(function, command, subcommands, description)
+    COMMAND(function, command, arguments..., subcommands, description)
+*/
+
+Command tpmSubCommands[]{
+        COMMAND(cmd_tpm_set, "set_key", ArgType::String, nullptr, ""),
+};
+
+Command commands[] {
+        COMMAND(cmd_help, "help", nullptr, "list commands"),
+        COMMAND(cmd_tpm, "TPM", tpmSubCommands, "TPM commands"),
+        COMMAND(cmd_tpm_status, "TPM get_status", NULL, "Get Status of TPM module"),
+};
+
+//SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command));
+
+// if default buffer size (64) is too small pass a buffer through constructor
+char staticSerialBuffer[512];
+SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command), staticSerialBuffer, sizeof(staticSerialBuffer));
+
+AES256 aes256;
+byte cypherBuffer[16];
 
 struct AES256Vector
 {
@@ -57,26 +96,22 @@ static AES256Vector const vectorAES256 = {
                     0xEA, 0xFC, 0x49, 0x90, 0x4B, 0x49, 0x60, 0x89}
 };
 
-AES256 aes256;
-
-byte buffer[16];
-
 void testCipher(BlockCipher *cipher, const struct AES256Vector *test)
 {
     crypto_feed_watchdog();
     Serial.print(test->name);
     Serial.print(" Encryption ... ");
     cipher->setKey(test->key, cipher->keySize());
-    cipher->encryptBlock(buffer, test->plaintext);
-    if (memcmp(buffer, test->ciphertext, 16) == 0)
+    cipher->encryptBlock(cypherBuffer, test->plaintext);
+    if (memcmp(cypherBuffer, test->ciphertext, 16) == 0)
         Serial.println("Passed");
     else
         Serial.println("Failed");
 
     Serial.print(test->name);
     Serial.print(" Decryption ... ");
-    cipher->decryptBlock(buffer, test->ciphertext);
-    if (memcmp(buffer, test->plaintext, 16) == 0)
+    cipher->decryptBlock(cypherBuffer, test->ciphertext);
+    if (memcmp(cypherBuffer, test->plaintext, 16) == 0)
         Serial.println("Passed");
     else
         Serial.println("Failed");
@@ -88,8 +123,8 @@ void encryptAES256(BlockCipher *cipher, const struct AES256Vector *vector)
     Serial.print(vector->name);
     Serial.print(" Encryption ... ");
     cipher->setKey(vector->key, cipher->keySize());
-    cipher->encryptBlock(buffer, vector->plaintext);
-    if (memcmp(buffer, vector->ciphertext, 16) == 0)
+    cipher->encryptBlock(cypherBuffer, vector->plaintext);
+    if (memcmp(cypherBuffer, vector->ciphertext, 16) == 0)
         Serial.println("Passed");
     else
         Serial.println("Failed");
@@ -101,8 +136,8 @@ void decryptAES256(BlockCipher *cipher, const struct AES256Vector *vector)
     
     Serial.print(vector->name);
     Serial.print(" Decryption ... ");
-    cipher->decryptBlock(buffer, vector->ciphertext);
-    if (memcmp(buffer, vector->plaintext, 16) == 0)
+    cipher->decryptBlock(cypherBuffer, vector->ciphertext);
+    if (memcmp(cypherBuffer, vector->plaintext, 16) == 0)
         Serial.println("Passed");
     else
         Serial.println("Failed");
@@ -110,24 +145,9 @@ void decryptAES256(BlockCipher *cipher, const struct AES256Vector *vector)
 
 void setup()
 {
+
     Serial.begin(DATARATE);
-
-    // Define pin modes for TX and RX
-    pinMode(RX_PIN, INPUT);
-    pinMode(TX_PIN, OUTPUT);
-    
-    // Set the baud rate for the SoftwareSerial object
-    mySerial.begin(DATARATE);
-
-    mySerial.write("Test");
-    if(mySerial.available() >0)
-    {
-      simRead = mySerial.readString();
-    }
-    mySerial.println();
-    mySerial.println();
-    mySerial.print(simRead);
-    Serial.println(simRead);
+    serialCommands.listCommands();
 
     Serial.println();
 
@@ -144,4 +164,64 @@ void setup()
 
 void loop()
 {
+    serialCommands.readSerial();
+}
+
+
+void cmd_help(SerialCommands& sender, Args& args) {
+    sender.listCommands();
+}
+
+void cmd_tpm(SerialCommands& sender, Args& args){
+    sender.listAllCommands(tpmSubCommands, sizeof(tpmSubCommands) / sizeof(Command));
+}
+
+byte nibble(char c)
+{
+  if (c >= '0' && c <= '9')
+    return c - '0';
+
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+
+  return 0;  // Not a valid hexadecimal character
+}
+
+void cmd_tpm_set(SerialCommands& sender, Args& args){
+  String key;
+  String keypart;
+  char cKeypart;
+  byte aesKey[32]={0};
+  byte bytes[5];
+  int startByte = 0;
+  int endByte = 0;
+
+    key = args[0].getString();
+    if (key.length() == 159){
+      for(int i = 0; i < 32; i++)
+      {
+        startByte = i * 5 + 2;
+        endByte = startByte + 2;
+        keypart = key.substring(startByte, endByte-1);
+        cKeypart = keypart[0];
+
+        aesKey[i] = nibble(cKeypart) << 4;
+        keypart = key.substring(startByte+1, endByte);
+        cKeypart = keypart[0];
+
+        aesKey[i] = aesKey[i] + nibble(cKeypart);
+      }
+
+      keypart = key.substring(2,4);
+    }
+    else{
+      Serial.println("Invalid Keylength");
+    }
+}
+
+void cmd_tpm_status(SerialCommands& sender, Args& args){
+    Serial.println("TPM Status Okay!");
 }
