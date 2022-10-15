@@ -3,9 +3,6 @@
 #include <StaticSerialCommands.h>
 
 void cmd_help(SerialCommands& sender, Args& args);
-void cmd_calc(SerialCommands& sender, Args& args);
-void cmd_calc_add(SerialCommands& sender, Args& args);
-void cmd_calc_mul(SerialCommands& sender, Args& args);
 void cmd_tpm(SerialCommands& sender, Args& args);
 void cmd_tpm_set(SerialCommands& sender, Args& args);
 void cmd_tpm_status(SerialCommands& sender, Args& args);
@@ -19,20 +16,14 @@ It takes the following arguments:
     COMMAND(function, command, arguments..., subcommands, description)
 */
 
-Command subCommands[] {
-        COMMAND(cmd_calc_add, "+", ArgType::Int, nullptr, "add numbers"),
-        COMMAND(cmd_calc_mul, "*", ArgType::Int, nullptr, "multiply numbers"),
-};
-
 Command tpmSubCommands[]{
         COMMAND(cmd_tpm_set, "set_key", ArgType::String, nullptr, ""),
-        COMMAND(cmd_tpm_status, "get_status"),
 };
 
 Command commands[] {
         COMMAND(cmd_help, "help", nullptr, "list commands"),
-        COMMAND(cmd_calc, "calc", ArgType::Int, subCommands, "calculator"),
-        COMMAND(cmd_tpm, "TPM", tpmSubCommands, "TPM"),
+        COMMAND(cmd_tpm, "TPM", tpmSubCommands, "TPM commands"),
+        COMMAND(cmd_tpm_status, "TPM get_status", NULL, "Get Status of TPM module"),
 };
 
 //SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command));
@@ -43,8 +34,7 @@ Command commands[] {
 
 void setup() {
     Serial.begin(9600);
-
-    serialCommands.listAllCommands();
+    serialCommands.listCommands();
 }
 
 void loop() {
@@ -52,7 +42,7 @@ void loop() {
 }
 
 void cmd_help(SerialCommands& sender, Args& args) {
-    sender.listAllCommands();
+    sender.listCommands();
 }
 
 void cmd_tpm(SerialCommands& sender, Args& args){
@@ -132,20 +122,4 @@ void cmd_tpm_set(SerialCommands& sender, Args& args){
 
 void cmd_tpm_status(SerialCommands& sender, Args& args){
     Serial.println("TPM Status Okay!");
-}
-
-void cmd_calc(SerialCommands& sender, Args& args) {
-    sender.listAllCommands(subCommands, sizeof(subCommands) / sizeof(Command));
-}
-
-void cmd_calc_add(SerialCommands& sender, Args& args) {
-    auto number1 = args[0].getInt();
-    auto number2 = args[1].getInt();
-    sender.getSerial().println(number1 + number2);
-}
-
-void cmd_calc_mul(SerialCommands& sender, Args& args) {
-    auto number1 = args[0].getInt();
-    auto number2 = args[1].getInt();
-    sender.getSerial().println(number1 * number2);
 }
