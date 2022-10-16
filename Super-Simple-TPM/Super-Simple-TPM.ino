@@ -24,13 +24,13 @@
 #include <AES.h>
 #include <StaticSerialCommands.h>
 
-#define DATARATE  9600
+#define DATARATE 9600
 
-
-void cmd_help(SerialCommands& sender, Args& args);
-void cmd_tpm(SerialCommands& sender, Args& args);
-void cmd_tpm_set(SerialCommands& sender, Args& args);
-void cmd_tpm_status(SerialCommands& sender, Args& args);
+void cmd_help(SerialCommands &sender, Args &args);
+void cmd_tpm(SerialCommands &sender, Args &args);
+void cmd_tpm_set(SerialCommands &sender, Args &args);
+void cmd_tpm_status(SerialCommands &sender, Args &args);
+void cmd_tpm_check(SerialCommands &sender, Args &args);
 
 /* https://www.arduino.cc/reference/en/libraries/crypto/ */
 /* statemachine */
@@ -47,7 +47,7 @@ void cmd_tpm_status(SerialCommands& sender, Args& args);
 /*    |    Linux    |     |  Changable  | Debug interface */
 /*    |             |     |             |      USB        */
 /*    ---------------     ---------------                 */
-/*                                                        */  
+/*                                                        */
 /*
 COMMAND macro is used to create Command object.
 It takes the following arguments:
@@ -58,19 +58,20 @@ It takes the following arguments:
 */
 
 Command tpmSubCommands[]{
-        COMMAND(cmd_tpm_set, "set_key", ArgType::String, nullptr, ""),
+    COMMAND(cmd_tpm_set, "set_key", ArgType::String, nullptr, "Set new AES Key in the form of 0xXX,0xXX,...,0xXX with 32 Bytes"),
+    COMMAND(cmd_tpm_status, "get_status", NULL, "Get Status of TPM module"),
+    COMMAND(cmd_tpm_check, "check_key", NULL, "Checks if new key works as expected"),
 };
 
-Command commands[] {
-        COMMAND(cmd_help, "help", nullptr, "list commands"),
-        COMMAND(cmd_tpm, "TPM", tpmSubCommands, "TPM commands"),
-        COMMAND(cmd_tpm_status, "TPM get_status", NULL, "Get Status of TPM module"),
+Command commands[]{
+    COMMAND(cmd_help, "help", nullptr, "list commands"),
+    COMMAND(cmd_tpm, "TPM", tpmSubCommands, "TPM commands"),
 };
 
-//SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command));
+// SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command));
 
 // if default buffer size (64) is too small pass a buffer through constructor
-char staticSerialBuffer[512];
+char staticSerialBuffer[256];
 SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command), staticSerialBuffer, sizeof(staticSerialBuffer));
 
 AES256 aes256;
@@ -84,17 +85,16 @@ struct AES256Vector
     byte ciphertext[16];
 };
 
-static AES256Vector const vectorAES256 = {
-    .name        = "AES-256-ECB",
-    .key         = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-                    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-                    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F},
-    .plaintext   = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-                    0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},
-    .ciphertext  = {0x8E, 0xA2, 0xB7, 0xCA, 0x51, 0x67, 0x45, 0xBF,
-                    0xEA, 0xFC, 0x49, 0x90, 0x4B, 0x49, 0x60, 0x89}
-};
+static AES256Vector vectorAES256 = {
+    .name = "AES-256-ECB",
+    .key = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F},
+    .plaintext = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                  0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},
+    .ciphertext = {0x8E, 0xA2, 0xB7, 0xCA, 0x51, 0x67, 0x45, 0xBF,
+                   0xEA, 0xFC, 0x49, 0x90, 0x4B, 0x49, 0x60, 0x89}};
 
 void testCipher(BlockCipher *cipher, const struct AES256Vector *test)
 {
@@ -133,7 +133,6 @@ void encryptAES256(BlockCipher *cipher, const struct AES256Vector *vector)
 void decryptAES256(BlockCipher *cipher, const struct AES256Vector *vector)
 {
     crypto_feed_watchdog();
-    
     Serial.print(vector->name);
     Serial.print(" Decryption ... ");
     cipher->decryptBlock(cypherBuffer, vector->ciphertext);
@@ -167,61 +166,85 @@ void loop()
     serialCommands.readSerial();
 }
 
-
-void cmd_help(SerialCommands& sender, Args& args) {
-    sender.listCommands();
+void cmd_help(SerialCommands &sender, Args &args)
+{
+    sender.listAllCommands();
 }
 
-void cmd_tpm(SerialCommands& sender, Args& args){
+void cmd_tpm(SerialCommands &sender, Args &args)
+{
     sender.listAllCommands(tpmSubCommands, sizeof(tpmSubCommands) / sizeof(Command));
 }
 
 byte nibble(char c)
 {
-  if (c >= '0' && c <= '9')
-    return c - '0';
+    if (c >= '0' && c <= '9')
+        return c - '0';
 
-  if (c >= 'a' && c <= 'f')
-    return c - 'a' + 10;
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
 
-  if (c >= 'A' && c <= 'F')
-    return c - 'A' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
 
-  return 0;  // Not a valid hexadecimal character
+    return 255; // Not a valid hexadecimal character
 }
 
-void cmd_tpm_set(SerialCommands& sender, Args& args){
-  String key;
-  String keypart;
-  char cKeypart;
-  byte aesKey[32]={0};
-  byte bytes[5];
-  int startByte = 0;
-  int endByte = 0;
+void cmd_tpm_set(SerialCommands &sender, Args &args)
+{
+    String key;
+    String keypart;
+    char cKeypart = 0;
+    byte aesKey[32] = {0};
+    byte bytes[5] = {0};
+    int startByte = 0;
+    int endByte = 0;
+    char temp = 0;
 
     key = args[0].getString();
-    if (key.length() == 159){
-      for(int i = 0; i < 32; i++)
-      {
-        startByte = i * 5 + 2;
-        endByte = startByte + 2;
-        keypart = key.substring(startByte, endByte-1);
-        cKeypart = keypart[0];
+    if (key.length() == 159)
+    {
+        for (int i = 0; i < 32; i++)
+        {
+            startByte = i * 5 + 2;
+            endByte = startByte + 2;
+            keypart = key.substring(startByte, endByte - 1);
+            cKeypart = keypart[0];
 
-        aesKey[i] = nibble(cKeypart) << 4;
-        keypart = key.substring(startByte+1, endByte);
-        cKeypart = keypart[0];
+            temp = nibble(cKeypart);
+            if (temp == 255)
+            {
+                Serial.println("No valid Hex format!");
+                break;
+            }
+            aesKey[i] = temp << 4;
+            keypart = key.substring(startByte + 1, endByte);
+            cKeypart = keypart[0];
 
-        aesKey[i] = aesKey[i] + nibble(cKeypart);
-      }
+            temp = nibble(cKeypart);
+            if (temp == 255)
+            {
+                Serial.println("No valid Hex format!");
+                break;
+            }
+            aesKey[i] = aesKey[i] + temp;
 
-      keypart = key.substring(2,4);
+            vectorAES256.key[i] = aesKey[i];
+        }
+        keypart = key.substring(2, 4);
     }
-    else{
-      Serial.println("Invalid Keylength");
+    else
+    {
+        Serial.println("Invalid Keylength");
     }
 }
 
-void cmd_tpm_status(SerialCommands& sender, Args& args){
+void cmd_tpm_status(SerialCommands &sender, Args &args)
+{
     Serial.println("TPM Status Okay!");
+}
+
+void cmd_tpm_check(SerialCommands &sender, Args &args)
+{
+    testCipher(&aes256, &vectorAES256);
 }
