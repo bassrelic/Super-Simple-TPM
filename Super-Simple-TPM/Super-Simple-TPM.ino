@@ -134,6 +134,17 @@ static AES256Vector vectorAES256Crossref = {
     .ciphertext = {0xfe, 0x46, 0x47, 0x0f, 0x75, 0x46, 0x21, 0x74,
                    0x86, 0xc3, 0x03, 0xfb, 0x29, 0xc2, 0xd0, 0x8c}};
 
+static AES256Vector workVectorAES256 = {
+    .name = "AES-256-ECB",
+    .key = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F},
+    .plaintext = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                  0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},
+    .ciphertext = {0x8E, 0xA2, 0xB7, 0xCA, 0x51, 0x67, 0x45, 0xBF,
+                   0xEA, 0xFC, 0x49, 0x90, 0x4B, 0x49, 0x60, 0x89}};
+
 void testCipher(BlockCipher *cipher, const struct AES256Vector *test)
 {
     crypto_feed_watchdog();
@@ -222,6 +233,17 @@ void loop()
         received = false;
         // Serial.println((char *)receivedData);
         // Serial.write('\n');
+
+        for(int i = 0; i < 16; i++){
+          workVectorAES256.ciphertext[i] = receivedData[i];
+        }
+
+        decryptAES256(&aes256, &workVectorAES256);
+
+        for(int i = 0; i < 16; i++){
+            receivedData[i] = workVectorAES256.plaintext[i];
+        }
+
         if (strcmp(receivedData, "ALAAAARM") == 0)
         {
             while (true)
@@ -231,6 +253,15 @@ void loop()
         }
         if (strcmp(receivedData, "ALLES_OK") == 0)
         {
+            byte retString[] = {'p','a','s','s','t',' ','s','c','h','o','n',' ','s','o','!'};
+            for(int i = 0; i < 16; i++){
+              workVectorAES256.plaintext[i]=retString[i];
+            }
+            encryptAES256(&aes256, &workVectorAES256);
+            for(int i = 0; i < 16; i++){
+              retString[i] = workVectorAES256.ciphertext[i];
+            }
+            SPI.transfer(retString, 16);
             for (int i = 0; i < NUM_LEDS; i++)
             {
                 showProgramRandom();
@@ -246,6 +277,8 @@ void loop()
 void cmd_help(SerialCommands &sender, Args &args)
 {
     sender.listAllCommands();
+    byte retString[] =  {'p','a','s','s','t',' ','s','c','h','o','n',' ','s','o','!'};
+    SPI.transfer(retString, 16);
 }
 
 void cmd_tpm(SerialCommands &sender, Args &args)
